@@ -6,4 +6,4 @@
 
 ## Usage
 
-    See example: [example/example.go](https://github.com/zbindenren/csv/blob/master/example/example.go)
+See [example](./example/example.go).
