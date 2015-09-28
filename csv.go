@@ -19,86 +19,13 @@ var (
 	ErrUnsupportedCSVType = errors.New("unsupported csv type")
 )
 
-type stringSlice []string
-
-type fieldInfo struct {
-	position   int
-	headerName string
-	fieldName  string
-	kind       reflect.Kind
-}
-
-type fieldInfos []fieldInfo
-
-// isComplete checks if the all field positions could be detected from the csv file.
-func (fieldInfos *fieldInfos) isComplete() bool {
-	for _, fieldInfo := range *fieldInfos {
-		if fieldInfo.position < 0 {
-			return false
-		}
-	}
-	return true
-}
-
-// createFieldInfos creates the fieldInfos for a struct s.
-// Only information from the struct (headerName, fieldName and kind) is available,
-// all field positions are initialized with an invalid value of -1
-func createFieldInfos(s interface{}) (fieldInfos, error) {
-	if reflect.TypeOf(s).Kind() != reflect.Struct {
-		return nil, ErrNoStruct
-	}
-	fieldInfos := []fieldInfo{}
-	headerNameMap := map[string]interface{}{} // to detect duplicate csv tag names
-	fieldNames, err := reflections.Fields(s)
-	if err != nil {
-		return nil, err
-	}
-	for _, fieldName := range fieldNames {
-		headerName, err := reflections.GetFieldTag(s, fieldName, "csv")
-		if err != nil {
-			return nil, err
-		}
-		// csv fieldtags that contain a dash are ignored
-		if strings.Contains(headerName, "-") {
-			continue
-		}
-		if _, ok := headerNameMap[headerName]; ok {
-			return nil, fmt.Errorf("duplicate csv tag name: %s", headerName)
-		}
-		headerNameMap[headerName] = nil
-		kind, err := reflections.GetFieldKind(s, fieldName)
-		if err != nil {
-			return nil, err
-		}
-		if len(headerName) == 0 {
-			return nil, fmt.Errorf("empty csv tag for field: %s", fieldName)
-		}
-		fieldInfos = append(fieldInfos, fieldInfo{
-			headerName: headerName,
-			fieldName:  fieldName,
-			position:   -1,
-			kind:       kind,
-		})
-	}
-	return fieldInfos, nil
-}
-
-func (s stringSlice) pos(item string) int {
-	for i, v := range s {
-		if item == v {
-			return i
-		}
-	}
-	return -1
-}
-
 // Marshaler reads a csv file and unmarshalls it to an endpoint struct.
 type Marshaler struct {
 	Reader         *csv.Reader
+	Lazy           bool // if true, marshaler does not exit on first cvs.ParseError but continues and append all errors
 	fieldInfos     fieldInfos
 	endPointStruct interface{}
 	errors         ParseErrors
-	Lazy           bool // if true, marshaler does not exit on first cvs.ParseError but coninues and appends errors
 }
 
 // NewMarshaler returns a new Marshaler
@@ -114,18 +41,6 @@ func NewMarshaler(endPointStruct interface{}, r io.Reader) (*Marshaler, error) {
 		endPointStruct: endPointStruct,
 		errors:         ParseErrors{},
 	}, nil
-}
-
-// ParseErrors is a slice of csv.ParseError
-type ParseErrors []csv.ParseError
-
-// Error returns te ParseErrors as string
-func (errs ParseErrors) Error() string {
-	s := ""
-	for _, err := range errs {
-		s = s + fmt.Sprintf("line:%d,position:%d,err:%s\n", err.Line, err.Column, err.Error)
-	}
-	return s
 }
 
 // Unmarshal parses a csv file and stores its value to a list of entpoint structs
@@ -199,4 +114,90 @@ func (m *Marshaler) Unmarshal() ([]interface{}, error) {
 		return structs, nil
 	}
 	return structs, m.errors
+}
+
+// ParseErrors is a slice of csv.ParseError
+type ParseErrors []csv.ParseError
+
+// Error returns te ParseErrors as string
+func (errs ParseErrors) Error() string {
+	s := ""
+	for _, err := range errs {
+		s = s + fmt.Sprintf("line:%d,position:%d,err:%s\n", err.Line, err.Column, err.Error)
+	}
+	return s
+}
+
+// fieldInfo descripes the mapping between the endpointStruct end the header in a csv file.
+type fieldInfo struct {
+	position   int
+	headerName string
+	fieldName  string
+	kind       reflect.Kind
+}
+
+type fieldInfos []fieldInfo
+
+// isComplete checks if the all field positions could be detected from the csv file.
+func (fieldInfos *fieldInfos) isComplete() bool {
+	for _, fieldInfo := range *fieldInfos {
+		if fieldInfo.position < 0 {
+			return false
+		}
+	}
+	return true
+}
+
+// createFieldInfos creates the fieldInfos for a struct s.
+// Only information from the struct (headerName, fieldName and kind) is available,
+// all field positions are initialized with an invalid value of -1
+func createFieldInfos(s interface{}) (fieldInfos, error) {
+	if reflect.TypeOf(s).Kind() != reflect.Struct {
+		return nil, ErrNoStruct
+	}
+	fieldInfos := []fieldInfo{}
+	headerNameMap := map[string]interface{}{} // to detect duplicate csv tag names
+	fieldNames, err := reflections.Fields(s)
+	if err != nil {
+		return nil, err
+	}
+	for _, fieldName := range fieldNames {
+		headerName, err := reflections.GetFieldTag(s, fieldName, "csv")
+		if err != nil {
+			return nil, err
+		}
+		// csv fieldtags that contain a dash are ignored
+		if strings.Contains(headerName, "-") {
+			continue
+		}
+		if _, ok := headerNameMap[headerName]; ok {
+			return nil, fmt.Errorf("duplicate csv tag name: %s", headerName)
+		}
+		headerNameMap[headerName] = nil
+		kind, err := reflections.GetFieldKind(s, fieldName)
+		if err != nil {
+			return nil, err
+		}
+		if len(headerName) == 0 {
+			return nil, fmt.Errorf("empty csv tag for field: %s", fieldName)
+		}
+		fieldInfos = append(fieldInfos, fieldInfo{
+			headerName: headerName,
+			fieldName:  fieldName,
+			position:   -1,
+			kind:       kind,
+		})
+	}
+	return fieldInfos, nil
+}
+
+type stringSlice []string
+
+func (s stringSlice) pos(item string) int {
+	for i, v := range s {
+		if item == v {
+			return i
+		}
+	}
+	return -1
 }
