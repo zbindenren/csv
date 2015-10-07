@@ -76,39 +76,39 @@ func (m *Marshaler) Unmarshal() ([]interface{}, error) {
 			}
 			continue
 		}
-		// if len(m.fieldInfos) > len(record) {
-		// return nil, &csv.ParseError{Line: line, Err: errors.New("bla")}
-		// }
 		sPtr := reflect.New(reflect.TypeOf(m.endPointStruct)).Interface()
+		var (
+			value interface{}
+			rerr  error
+		)
 		for _, fieldInfo := range m.fieldInfos {
-			var (
-				value interface{}
-				err   error
-			)
 			switch fieldInfo.kind {
 			case reflect.Bool:
-				value, err = strconv.ParseBool(record[fieldInfo.position])
+				value, rerr = strconv.ParseBool(record[fieldInfo.position])
 			case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-				value, err = strconv.Atoi(record[fieldInfo.position])
+				value, rerr = strconv.Atoi(record[fieldInfo.position])
 			case reflect.Float32, reflect.Float64:
-				value, err = strconv.ParseFloat(record[fieldInfo.position], 64)
+				value, rerr = strconv.ParseFloat(record[fieldInfo.position], 64)
 			case reflect.String:
 				value = record[fieldInfo.position]
 			default:
-				err = ErrUnsupportedCSVType
+				rerr = ErrUnsupportedCSVType
 			}
-			if err != nil {
+			if rerr != nil {
 				m.errors = append(m.errors, csv.ParseError{
 					Column: fieldInfo.position,
 					Line:   line,
-					Err:    err,
+					Err:    rerr,
 				})
 				break
 			}
 			reflections.SetField(sPtr, fieldInfo.fieldName, value)
 		}
-		v := reflect.ValueOf(sPtr).Elem().Interface()
-		structs = append(structs, v)
+		// add value only if error is nil
+		if rerr == nil {
+			v := reflect.ValueOf(sPtr).Elem().Interface()
+			structs = append(structs, v)
+		}
 	}
 	if len(m.errors) == 0 {
 		return structs, nil
